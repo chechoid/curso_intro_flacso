@@ -1,0 +1,174 @@
+---
+title: "Práctica Independiente - Clase 3 Curso Introducción a R para Ciencias Sociales"
+output:
+  html_document:
+    df_print: paged
+---
+# Práctica independiente
+
+
+Carga de librerías
+```{r}
+library(tidyverse)
+library(openxlsx)
+library(scales)
+```
+
+Levantar todas las tablas individuales y crear vectores con las variables elegidas para los ejercicios.
+```{r}
+variables_interes <- c("ANO4", "TRIMESTRE", "ESTADO", "PONDERA" ,"PONDIH", "CH04", "CH06", "CAT_OCUP", "PP08D1")
+
+variables_interes2 <- c("ANO4", "TRIMESTRE", "ESTADO", "PONDERA" ,"PONDIH", "CH04", "CH06", "CAT_OCUP", "P21")
+
+individual_t216 <- read.table("Fuentes/usu_individual_t216.txt",
+                              sep = ";",
+                              dec = ",",
+                              header = TRUE,
+                              fill = TRUE) 
+
+
+individual_t316 <- read.table("Fuentes/usu_individual_t316.txt",
+                              sep = ";",
+                              dec = ",",
+                              header = TRUE,
+                              fill = TRUE) 
+
+individual_t416 <- read.table("Fuentes/usu_individual_t416.txt",
+                              sep = ";",
+                              dec = ",",
+                              header = TRUE,
+                              fill = TRUE) 
+
+individual_t117 <- read.table("Fuentes/usu_individual_t117.txt",
+                              sep = ";",
+                              dec = ",",
+                              header = TRUE,
+                              fill = TRUE)
+
+individual_t119 <- read.table("Fuentes/usu_individual_t119.txt",
+                              sep = ";",
+                              dec = ",",
+                              header = TRUE,
+                              fill = TRUE)
+```
+
+Creo objetos para seleccionar las variables de interés.
+```{r}
+ind_chica_t216 <- individual_t216 %>% select(variables_interes)
+ind_chica_t316 <- individual_t316 %>% select(variables_interes)
+ind_chica_t416 <- individual_t416 %>% select(variables_interes)
+ind_chica_t117 <- individual_t117 %>% select(variables_interes)
+ind_chica_t119 <- individual_t119 %>% select(variables_interes)
+
+#Variables seleccionadas para ejercicios ponderados
+ind_chica_t216_2 <- individual_t216 %>% select(variables_interes2)
+ind_chica_t316_2 <- individual_t316 %>% select(variables_interes2)
+ind_chica_t416_2 <- individual_t416 %>% select(variables_interes2)
+ind_chica_t117_2 <- individual_t117 %>% select(variables_interes2)
+ind_chica_t119_2 <- individual_t119 %>% select(variables_interes2)
+
+```
+
+Uno todos los objetos por fila.
+```{r}
+trimestres <- bind_rows(ind_chica_t216, ind_chica_t316, ind_chica_t416, ind_chica_t117, ind_chica_t119)
+
+trim_pond <- bind_rows(ind_chica_t216_2,ind_chica_t316_2, ind_chica_t416_2, ind_chica_t117_2, ind_chica_t119_2) %>%
+  rename(Sexo = CH04,
+         Edad = CH06,
+         Ingreso = P21) %>%
+  mutate(Sexo = factor(Sexo, levels = c("1", "2"), labels = c("Hombre", "Mujer")))
+
+```
+
+
+# Ejercicios
+
+Calcular, al mismo tiempo para los cuatro trimestres, el total de población, de ocupados y desocupados.
+
+```{r}
+trimestres_limpio <- trimestres %>%
+  rename(Sexo = CH04,
+         Edad = CH06,
+         Ingreso = PP08D1) %>%
+  mutate(Sexo = factor(Sexo, levels = c("1","2"), labels = c("Hombre", "Mujer")))
+
+ejercicio_1 <- trimestres_limpio %>%
+  group_by(ANO4, TRIMESTRE) %>% 
+  summarise(Poblacion = sum(PONDERA),
+            Ocupados = sum(PONDERA[ESTADO == 1]),
+            Desocupados = sum(PONDERA[ESTADO == 2]))
+
+ejercicio_1
+```
+
+
+Calcular, al mismo tiempo para los cuatro trimestres, las tasas de actividad, empleo y desempleo según sexo, para la población de edad entre 18 y 35 años
+
+```{r}
+ejercicio_2 <- trimestres_limpio %>%
+  filter(Edad >= 18, Edad <= 35) %>%
+  group_by(ANO4, TRIMESTRE, Sexo) %>%
+  summarise(Poblacion = sum(PONDERA),
+            Ocupados = sum(PONDERA[ESTADO == 1]),
+            Desocupados = sum(PONDERA[ESTADO == 2]),
+            PEA = Ocupados+Desocupados,
+            'Tasa Actividad' = percent(PEA/Poblacion, accuracy = 0.1),
+            'Tasa Empleo' = percent(Ocupados / PEA, accuracy = 0.1),
+            'Tasa Desempleo' = percent(Desocupados/PEA, accuracy = 0.1)) %>%
+  select(Año = ANO4, TRIMESTRE, Sexo, 'Tasa Actividad':'Tasa Desempleo')
+
+ejercicio_2
+```
+
+
+Calcular el salario promedio por sexo, para dos grupos de edad: 18 a 35 años y 36 a 70 años. (Recordatorio: La base debe filtrarse para contener únicamente OCUPADOS ASALARIADOS)
+
+
+```{r}
+ejercicio_3 <- trimestres_limpio %>%
+  filter(Edad %in% c(18,70),CAT_OCUP == 3, Ingreso > 0) %>%
+  mutate(Rango_Etario = case_when(
+    Edad %in% 18:35 ~ "18 a 35",
+    Edad %in% 36:70 ~ "36 a 70")) %>%
+  group_by(Sexo, Rango_Etario) %>%
+  summarise(Ingreso_Promedio = weighted.mean(Ingreso, w = PONDIH)) %>%
+  select(Sexo, Rango_Etario, Ingreso_Promedio)
+
+ejercicio_3
+```
+
+
+Una alternativa al ejercicio anterios usando la variable **P21** en vez de **PP08D1**.
+
+```{r}
+ejercicio_3_ponderado <- trim_pond %>%
+  filter(Edad %in% c(18,70),CAT_OCUP == 3, Ingreso > 0) %>%
+  mutate(Rango_Etario = case_when(
+    Edad %in% 18:35 ~ "18 a 35",
+    Edad %in% 36:70 ~ "36 a 70")) %>%
+  group_by(Sexo, Rango_Etario) %>%
+  summarise(Ingreso_Promedio = weighted.mean(Ingreso, w = PONDIH)) %>%
+  select(Sexo, Rango_Etario, Ingreso_Promedio)
+
+ejercicio_3_ponderado
+```
+
+  
+
+
+# Guardar archivo
+
+Creo una lista con todos los objetos de los ejercicios.
+```{r}
+practica_ind_3 <- list(ejercicio_1, ejercicio_2, ejercicio_3, ejercicio_3_ponderado)
+```
+
+Genero un archivo .xlsx con una pestaña para cada uno de los ejercicios.
+```{r}
+write.xlsx(practica_ind_3, file = "practica_independiente_3.xlsx", row.names = FALSE)  
+```
+
+
+  
+
